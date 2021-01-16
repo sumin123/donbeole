@@ -33,7 +33,7 @@ class Kiwoom(QAxWidget):
         self.get_account_info()
         self.detail_account_info()
         self.detail_account_mystock()
-        self.not_concluded_account()
+        QTimer.singleShot(5000, self.not_concluded_account)
 
     def get_ocx_instance(self):
         self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
@@ -109,6 +109,8 @@ class Kiwoom(QAxWidget):
 
             ok_deposit = self.dynamicCall("GetCommData(String, String, int, String)", sTrCode, sRQName, 0, "출금가능금액")
             print("출금가능금액 %s" % int(ok_deposit))
+
+            self.stop_screen_cancel(self.screen_my_info)
 
             self.detail_account_info_event_loop.exit()
 
@@ -210,3 +212,6 @@ class Kiwoom(QAxWidget):
                 print("미체결 종목 : %s " % self.not_account_stock_dict[order_no])
 
             self.detail_account_info_event_loop.exit()
+
+    def stop_screen_cancel(self, sScrNo=None):
+        self.dynamicCall("DisconnectRealData(Qstring)", sScrNo)
