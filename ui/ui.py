@@ -11,6 +11,3 @@ class Ui_class():
         self.kiwoom = Kiwoom()
 
         self.app.exec_()
-
-if __name__ == "__main__":
-    Ui_class()
