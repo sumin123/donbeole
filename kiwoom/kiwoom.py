@@ -15,11 +15,11 @@ class Kiwoom(QAxWidget):
 
         self.realType = RealType()
 
-        ########## eventloop 모음 #############
+        ############## eventloop 모음 #############
         self.login_event_loop = None
         self.detail_account_info_event_loop = QEventLoop()
         self.calculator_event_loop = QEventLoop()
-        #######################################
+        ##########################################
 
         ########## 스크린 번호 모음 ###################
         self.screen_my_info = "2000"
@@ -34,6 +34,7 @@ class Kiwoom(QAxWidget):
         self.account_stock_dict = {}
         self.not_account_stock_dict = {}
         self.jango_dict = {}
+        self.waiting_list = []
         ########################################
 
         ########## 종목 분석 용 #################
@@ -60,7 +61,7 @@ class Kiwoom(QAxWidget):
         self.not_concluded_account()
         #QTimer.singleShot(5000, self.not_concluded_account)
 
-        self.calculator_fnc() #종목 분석용, 임시용으로 실행
+        #self.calculator_fnc() #종목 분석용, 임시용으로 실행
 
         QTest.qWait(10000)
         self.read_code()
@@ -473,7 +474,7 @@ class Kiwoom(QAxWidget):
                     self.portfolio_stock_dict.update({stock_code: {"종목명": stock_name, "55일신고가": high_55, "20일신저가": low_20}})
 
             f.close()
-            print("종목별 데이터")
+            print("실시간 등록 종목별 데이터")
             print(self.portfolio_stock_dict)
 
     def screen_number_setting(self):
@@ -519,6 +520,7 @@ class Kiwoom(QAxWidget):
 
     def realdata_slot(self, sCode, sRealType, sRealData):
         if sRealType == "장시작시간":
+            print('시작')
             fid = self.realType.REALTYPE[sRealType]['장운영구분']
             value = self.dynamicCall("GetCommRealData(QString, int)", sCode, fid)
             if value == '0':
@@ -559,6 +561,9 @@ class Kiwoom(QAxWidget):
             k = self.dynamicCall("GetCommRealData(QString, int)", sCode, self.realType.REALTYPE[sRealType]['저가'])
             k = abs(int(k))
 
+            #print("체결시간: %s, 종목코드: %s, 현재가: %s" %(a, sCode, b))
+            if b < 1000:        #매매 금지목록
+                return 0;
             if sCode not in self.portfolio_stock_dict:
                 self.portfolio_stock_dict.update({sCode: {}})
 
@@ -567,126 +572,6 @@ class Kiwoom(QAxWidget):
             self.portfolio_stock_dict[sCode].update({"고가": i})
             self.portfolio_stock_dict[sCode].update({"시가": j})
             self.portfolio_stock_dict[sCode].update({"저가": k})
-
-            # 계좌 잔고에 있는 종목인 경우
-            if sCode in self.account_stock_dict.keys():
-                # ATR 계산
-                atr = i - k
-                atr += i - j
-                atr += k - j
-                atr /= 3
-                atr = abs(atr)
-
-                asd = self.account_stock_dict[sCode]
-                buy_price = asd['매입가']
-                ATR_unit = asd['ATR_unit']
-                # (현재가 < 매입가 - 2 * ATR) or (20일 신저가 하향 돌파) 시 매도
-                if b < (buy_price - 2 * atr) or b < int(self.portfolio_stock_dict[sCode]['20일신저가']):
-                    order_success = self.dynamicCall(
-                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
-                        ["신규매도", self.portfolio_stock_dict[sCode]['주문용스크린번호'], self.account_num, 2,
-                         sCode, asd['매매가능수량'], 0, self.realType.SENDTYPE['거래구분']['시장가'], ""])
-
-                    if order_success == 0:
-                        print('매도 주문 체결')
-                        del self.account_stock_dict[sCode]
-
-                    else:
-                        print('매도 주문 체결 실패')
-
-                # (현재가 - 매입가 > n*ATR) 시 추매
-                if (b - buy_price > atr * ATR_unit):
-                    print("%s %s" % ("신규 매수 주문", sCode))
-
-                    result = self.unit / e
-                    quantity = int(result)
-
-                    order_success = self.dynamicCall(
-                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
-                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
-                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
-                    )  # 현재가로 매수 주문
-
-                    if order_success == 0:
-                        print("매수주문 체결")
-                        self.account_stock_dict[sCode]['ATR_unit'] = self.account_stock_dict[sCode]['ATR_unit'] + 1
-                        # self.logging.logger.debug("매수주문 전달 성공")
-
-                    else:
-                        print("매수주문 체결 실패")
-                        # self.logging.logger.debug("매수주문 전달 실패")
-
-           # 오늘 산 잔고에 있을 경우 같은 방식으로 매도 / 추매
-            elif sCode in self.jango_dict.keys():
-                jd = self.jango_dict[sCode]
-
-                atr = i - k
-                atr += i - j
-                atr += k - j
-                atr /= 3
-                atr = abs(atr)
-
-                buy_price = jd['매입가']
-                ATR_unit = jd['ATR_unit']
-                # (현재가 < 매입가 - 2 * ATR) or (20일 신저가 하향 돌파) 시 매도
-                if b < (buy_price - 2 * atr) or b < int(self.portfolio_stock_dict[sCode]['20일신저가']):
-                    order_success = self.dynamicCall(
-                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
-                        ["신규매도", self.portfolio_stock_dict[sCode]['주문용스크린번호'], self.account_num, 2,
-                         sCode, jd['매매가능수량'], 0, self.realType.SENDTYPE['거래구분']['시장가'], ""])
-
-                    if order_success == 0:
-                        print('매도 주문 체결')
-                        del self.jango_dict[sCode]
-
-                    else:
-                        print('매도 주문 체결 실패')
-
-                # (현재가 - 매입가 > n*ATR) 시 추매
-                if (b - buy_price > atr * ATR_unit):
-                    print("%s %s" % ("신규 매수 주문", sCode))
-
-                    result = self.unit / e
-                    quantity = int(result)
-
-                    order_success = self.dynamicCall(
-                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
-                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
-                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
-                    )  # 현재가로 매수 주문
-
-                    if order_success == 0:
-                        print("매수주문 체결")
-                        self.jango_dict[sCode]['ATR_unit'] = self.jango_dict[sCode]['ATR_unit'] + 1
-                        # self.logging.logger.debug("매수주문 전달 성공")
-
-                    else:
-                        print("매수주문 체결 실패")
-                        # self.logging.logger.debug("매수주문 전달 실패")
-
-            # 오늘 산 종목이 아니고 보유종목도 아닌 경우
-            elif sCode not in self.jango_dict.keys() and sCode not in self.account_stock_dict.keys():
-                # 55일 신고가 상향 돌파시 매수
-                if b > int(self.portfolio_stock_dict[sCode]['55일신고가']):
-                    result = self.unit / e
-                    quantity = int(result)
-
-                    order_success = self.dynamicCall(
-                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
-                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
-                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
-                    )  # 현재가로 매수 주문
-
-                    if order_success == 0:
-                        print("매수주문 체결")
-                        self.jango_dict[sCode]['매입가'] = e
-                        self.jango_dict[sCode]['ATR_unit'] = self.jango_dict[sCode]['ATR_unit'] + 1
-                        # self.logging.logger.debug("매수주문 전달 성공")
-
-                    else:
-                        print("매수주문 체결 실패")
-                        # self.logging.logger.debug("매수주문 전달 실패")
-
 
             # 미체결 주문이 있을시 매수 취소
             not_trade_list = list(self.not_account_stock_dict)  # self.not_account_stock_dict.copy()
@@ -705,12 +590,132 @@ class Kiwoom(QAxWidget):
                     )
 
                     if order_success == 0:
-                        self.logging.logger.debug("매수취소 전달 성공")
+                        print("%s 매수취소 전달 성공" % sCode)
                     else:
-                        self.logging.logger.debug("매수취소 전달 실패")
+                        print("%s 매수취소 전달 실패" % sCode)
 
                 elif not_quantity == 0:
                     del self.not_account_stock_dict[order_num]
+
+            # 계좌 잔고에 있는 종목이고 체결대기중인 종목이 아닌 경우
+            if sCode in self.account_stock_dict.keys() and sCode not in self.waiting_list:
+                # ATR 계산
+                atr = i - k
+                atr += i - j
+                atr += k - j
+                atr /= 3
+                atr = abs(atr)
+
+                asd = self.account_stock_dict[sCode]
+                buy_price = asd['매입가']
+                ATR_unit = asd['ATR_unit']
+                # (현재가 < 매입가 - 2 * ATR) or (20일 신저가 하향 돌파) 시 매도
+                if b < (buy_price - 2 * atr) or b < int(self.portfolio_stock_dict[sCode]['20일신저가']):
+                    order_success = self.dynamicCall(
+                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                        ["신규매도", self.portfolio_stock_dict[sCode]['주문용스크린번호'], self.account_num, 2,
+                         sCode, asd['매매가능수량'], 0, self.realType.SENDTYPE['거래구분']['시장가'], ""])
+
+                    if order_success == 0:
+                        print('[계좌 잔고] %s 매도 주문 체결' % sCode)
+                        del self.account_stock_dict[sCode]
+
+                    else:
+                        print('[계좌 잔고] %s 매도 주문 체결 실패' % sCode)
+
+                # (현재가 - 매입가 > n*ATR) 시 추매
+                if (b - buy_price > atr * ATR_unit):
+                    print("%s %s" % ("신규 매수 주문", sCode))
+
+                    result = self.unit / e
+                    quantity = int(result)
+
+                    order_success = self.dynamicCall(
+                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
+                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
+                    )  # 현재가로 매수 주문
+                    self.waiting_list.append(sCode)
+                    if order_success == 0:
+                        print("[추매] %s 매수주문 체결" % sCode)
+                        self.account_stock_dict[sCode]['ATR_unit'] = self.account_stock_dict[sCode]['ATR_unit'] + 1
+                        # self.logging.logger.debug("매수주문 전달 성공")
+
+                    else:
+                        print("[추매] %s 매수주문 체결 실패" % sCode)
+                        # self.logging.logger.debug("매수주문 전달 실패")
+
+           # 오늘 산 잔고에 있고 체결대기중인 아닌 경우 같은 방식으로 매도 / 추매
+            elif sCode in self.jango_dict.keys() and sCode not in self.waiting_list:
+                jd = self.jango_dict[sCode]
+
+                atr = i - k
+                atr += i - j
+                atr += k - j
+                atr /= 3
+                atr = abs(atr)
+
+                buy_price = jd['매입단가']
+                ATR_unit = jd['ATR_unit']
+                # (현재가 < 매입가 - 2 * ATR) or (20일 신저가 하향 돌파) 시 매도
+                if b < (buy_price - 2 * atr) or b < int(self.portfolio_stock_dict[sCode]['20일신저가']):
+                    order_success = self.dynamicCall(
+                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                        ["신규매도", self.portfolio_stock_dict[sCode]['주문용스크린번호'], self.account_num, 2,
+                         sCode, jd['주문가능수량'], 0, self.realType.SENDTYPE['거래구분']['시장가'], ""])
+
+                    if order_success == 0:
+                        print('[당일 주문] 매도 주문 체결')
+                        del self.jango_dict[sCode]
+
+                    else:
+                        print('[당일 주문] 매도 주문 체결 실패')
+
+                # (현재가 - 매입가 > n*ATR) 시 추매
+                if (b - buy_price > atr * ATR_unit):
+                    print("%s %s" % ("신규 매수 주문", sCode))
+
+                    result = self.unit / e
+                    quantity = int(result)
+
+                    order_success = self.dynamicCall(
+                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
+                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
+                    )  # 현재가로 매수 주문
+                    self.waiting_list.append(sCode)
+                    if order_success == 0:
+                        print("[당일 주문] 매수주문 체결")
+                        self.jango_dict[sCode]['ATR_unit'] = self.jango_dict[sCode]['ATR_unit'] + 1
+                        # self.logging.logger.debug("매수주문 전달 성공")
+
+                    else:
+                        print("[당일 주문] 매수주문 체결 실패")
+                        # self.logging.logger.debug("매수주문 전달 실패")
+
+            # 오늘 산 종목이 아니고 보유종목도 아니고 미체결 상태인 종목도 아닌 경우
+            elif sCode not in self.jango_dict.keys() and sCode not in self.account_stock_dict.keys() and sCode not in self.waiting_list:
+                # 55일 신고가 상향 돌파시 매수
+                if b > int(self.portfolio_stock_dict[sCode]['55일신고가']):
+                    result = self.unit / e
+                    quantity = int(result)
+
+                    order_success = self.dynamicCall(
+                        "SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                        ["신규매수", self.portfolio_stock_dict[sCode]["주문용스크린번호"], self.account_num, 1, sCode, quantity,
+                         e, self.realType.SENDTYPE['거래구분']['지정가'], ""]
+                    )  # 현재가로 매수 주문
+                    self.waiting_list.append(sCode)
+                    if order_success == 0:
+                        print("[신규] %s 매수주문 체결" % sCode)
+                        # self.logging.logger.debug("매수주문 전달 성공")
+
+                    else:
+                        print("[신규] %s 매수주문 체결 실패" % sCode)
+                        # self.logging.logger.debug("매수주문 전달 실패")
+
+
+
 
             '''
             a = self.dynamicCall("GetCommRealData(QString, int)", sCode, self.realType.REALTYPE[sRealType]['체결시간'])
@@ -853,6 +858,7 @@ class Kiwoom(QAxWidget):
 
             origin_order_num = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['주문체결']['원주문번호'])
             order_num = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['주문체결']['주문번호'])
+            order_num = int(order_num.strip())
 
             order_status = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['주문체결']['주문상태'])
 
@@ -912,9 +918,10 @@ class Kiwoom(QAxWidget):
             self.not_account_stock_dict[order_num].update({"(최우선)매도호가": first_sell_price})
             self.not_account_stock_dict[order_num].update({"(최우선)매수호가": first_buy_price})
 
-            print(self.not_account_stock_dict)
+            if not_chegual_quan == 0:
+                del self.not_account_stock_dict[order_num]
 
-        elif int(sGubun) == 1:
+        elif int(sGubun) == 1:  #잔고 내역 변경
             account_num = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['잔고']['계좌번호'])
             sCode = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['잔고']['종목코드'])[1:]
 
@@ -945,6 +952,8 @@ class Kiwoom(QAxWidget):
             first_buy_price = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['잔고']['(최우선)매수호가'])
             first_buy_price = abs(int(first_buy_price))
 
+            self.waiting_list.remove(sCode)
+
             if sCode not in self.jango_dict.keys():
                 self.jango_dict.update({sCode: {}})
 
@@ -962,6 +971,7 @@ class Kiwoom(QAxWidget):
 
             if stock_quan == 0:
                 del self.jango_dict[sCode]
+                #del self.not_account_stock_dict[]
                 self.dynamicCall("SetRealRemove(QString, QString)", self.portfolio_stock_dict[sCode]['스크린번호'], sCode)
 
     #송수신 메세지 get
