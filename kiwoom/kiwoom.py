@@ -152,7 +152,7 @@ class Kiwoom(QAxWidget):
 
             self.use_money = int(deposit) * self.use_money_percent
             self.use_money = self.use_money / 4
-            self.unit = int(deposit) * 0.02  # 1unit = 2%
+            self.unit = int(deposit) * 0.02  # 1 unit = 2%
 
             ok_deposit = self.dynamicCall("GetCommData(String, String, int, String)", sTrCode, sRQName, 0, "출금가능금액")
             print("출금가능금액 %s" % int(ok_deposit))
@@ -563,7 +563,7 @@ class Kiwoom(QAxWidget):
 
             #print("체결시간: %s, 종목코드: %s, 현재가: %s" %(a, sCode, b))
             if b < 1000:        #매매 금지목록
-                return 0;
+                return 0
             if sCode not in self.portfolio_stock_dict:
                 self.portfolio_stock_dict.update({sCode: {}})
 
@@ -952,7 +952,8 @@ class Kiwoom(QAxWidget):
             first_buy_price = self.dynamicCall("GetChejanData(int)", self.realType.REALTYPE['잔고']['(최우선)매수호가'])
             first_buy_price = abs(int(first_buy_price))
 
-            self.waiting_list.remove(sCode)
+            if meme_gubun == "매수" and sCode in self.waiting_list:
+                self.waiting_list.remove(sCode)
 
             if sCode not in self.jango_dict.keys():
                 self.jango_dict.update({sCode: {}})
